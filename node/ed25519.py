@@ -51,7 +51,7 @@ The RFC's code carries this notice:
 SPDX-FileCopyrightText: 2017 IETF Trust and the persons identified as authors of the code (S. Josefsson, I. Liusvaara)
 SPDX-FileCopyrightText: 2026 The Chupathingy contributors
 SPDX-FileCopyrightText: 2026 Milenko x Horrible Dev
-SPDX-License-Identifier: GPL-3.0-or-later AND BSD-2-Clause
+SPDX-License-Identifier: MIT AND BSD-2-Clause
 """
 
 import hashlib

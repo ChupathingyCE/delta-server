@@ -3,7 +3,7 @@ with secrets read from the environment or from files outside the
 repository, never from the file itself.
 
 SPDX-FileCopyrightText: 2026 Milenko x Horrible Dev
-SPDX-License-Identifier: GPL-3.0-or-later
+SPDX-License-Identifier: MIT
 """
 
 import os

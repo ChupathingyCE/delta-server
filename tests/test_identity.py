@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 The Chupathingy contributors
 # SPDX-FileCopyrightText: 2026 Milenko x Horrible Dev
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Device identity, stage A (identity.py, /v1/identity/*, tokens in place of
 the player key): the shared test vectors (chupathingyce's docs/delta.md,
 "Device identity"; command's and the game's tests check the same bytes),

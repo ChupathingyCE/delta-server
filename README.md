@@ -82,6 +82,6 @@ from `DELTA_DOORBELL_PASSWORD`. Any string setting can also be set as
 
 ## License
 
-GPL-3.0-or-later (LICENSE). `node/ed25519.py` also carries the RFC 8032
+MIT (LICENSE). `node/ed25519.py` also carries the RFC 8032
 reference code's Simplified BSD notice (LICENSES/BSD-2-Clause.txt).
 Authors are in AUTHORS.md.

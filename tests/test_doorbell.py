@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 The Chupathingy contributors
 # SPDX-FileCopyrightText: 2026 Milenko x Horrible Dev
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Tests of the doorbell (doorbell.py): copies' doorbells, the rings each
 friends change makes, the game's answers carrying the doorbell, and (when
 mosquitto is installed) rings through a local broker set up as ours are:

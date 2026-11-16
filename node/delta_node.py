@@ -36,7 +36,7 @@ TODO(federation): handle:domain names, other nodes' issuers and lists, and
 friends between nodes are delta-spec's federation.md; none of it is here.
 
 SPDX-FileCopyrightText: 2026 Milenko x Horrible Dev
-SPDX-License-Identifier: GPL-3.0-or-later
+SPDX-License-Identifier: MIT
 """
 
 import argparse

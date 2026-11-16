@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 The Chupathingy contributors
 # SPDX-FileCopyrightText: 2026 Milenko x Horrible Dev
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Tests of Delta List's host fields (delta_list.py): what a ChupathingyCE
 host says of itself in its announcement, read compatibly (old clients send
 none of it, malformed fields are left out), what /v1/games shows of each

@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 The Chupathingy contributors
 # SPDX-FileCopyrightText: 2026 Milenko x Horrible Dev
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Delta clients (delta_clients.py): registering another app, its scopes on
 its devices, pending and suspended clients, its own counts, and requests
 with no client ID working as before: python3 -m unittest test_delta_clients"""

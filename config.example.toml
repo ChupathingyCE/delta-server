@@ -1,5 +1,5 @@
 # SPDX-FileCopyrightText: 2026 Milenko x Horrible Dev
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 #
 # delta-server settings. Copy to config.toml (kept out of git) and change
 # what you need; every setting below shows its default. No secret goes in

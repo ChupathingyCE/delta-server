@@ -1,5 +1,5 @@
 # SPDX-FileCopyrightText: 2026 Milenko x Horrible Dev
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """The node running on 127.0.0.1 with an in-memory database: the list, the
 console list, device identity, presence, friends, invites, parties and
 clans, through HTTP as a game would use them:

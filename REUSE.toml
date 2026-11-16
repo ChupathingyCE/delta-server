@@ -3,9 +3,9 @@ version = 1
 [[annotations]]
 path = ["node/blocked_names.txt", "tests/testdata/**"]
 SPDX-FileCopyrightText = ["2026 The Chupathingy contributors", "2026 Milenko x Horrible Dev"]
-SPDX-License-Identifier = "GPL-3.0-or-later"
+SPDX-License-Identifier = "MIT"
 
 [[annotations]]
 path = ["README.md", "INVENTORY.md", "AUTHORS.md"]
 SPDX-FileCopyrightText = "2026 Milenko x Horrible Dev"
-SPDX-License-Identifier = "GPL-3.0-or-later"
+SPDX-License-Identifier = "MIT"
