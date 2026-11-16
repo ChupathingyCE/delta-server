@@ -1,5 +1,7 @@
 # delta-server
 
+> **Draft for discussion.** This is the work Chupathingy already has, separated out so other projects can read it and shape a shared spec. Nothing here is final: open an issue for anything that should be in, out or different.
+
 Run your own Delta network node: the game list, device identity and the
 social services (friends, presence, invites, parties, clans) that Delta
 clients use, in standard-library Python.
