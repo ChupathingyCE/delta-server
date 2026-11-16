@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: 2026 Milenko x Horrible Dev
+# SPDX-License-Identifier: GPL-3.0-or-later
+__pycache__/
+*.pyc
+/data/
+/config.toml
+*.db
+*.key
+*.seed
+*.pem
+.env

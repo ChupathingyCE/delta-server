@@ -1,0 +1,68 @@
+# SPDX-FileCopyrightText: 2026 Milenko x Horrible Dev
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# delta-server settings. Copy to config.toml (kept out of git) and change
+# what you need; every setting below shows its default. No secret goes in
+# this file: keys and passwords are files outside the repository, or
+# environment variables. Any string setting can also be given as
+# DELTA_<SECTION>__<NAME>, for example DELTA_NODE__DOMAIN=example.org.
+
+[node]
+# This node's host name: device certificates are signed for it, and it is
+# the "domain" of handle:domain names once federation exists.
+domain = "localhost"
+# Listen on the loopback address; put a reverse proxy with TLS in front.
+address = "127.0.0.1"
+port = 8390
+# The data folder: node.db, the address tag key (address.key, made at first
+# start) and Delta's legacy table when it is pulled.
+data = "./data"
+# The SQLite file; "" is <data>/node.db, ":memory:" keeps nothing.
+database = ""
+# Handles nobody may take on this node.
+reserved_names = ["admin", "moderator", "staff", "support", "system", "root", "server", "official"]
+# true: take the client's address from X-Forwarded-For, only when the
+# request comes from the loopback address (your reverse proxy).
+behind_proxy = false
+
+[list]
+# Games one address may list at once.
+games_per_address = 4
+# Host names that serve the console list alone over plain HTTP (consoles
+# without TLS), for example ["consoles.example.org"].
+console_hosts = []
+# A file of ping anchors, one "anchor<TAB>host<TAB>port<TAB>regions" a line
+# (host names only). "" serves none.
+anchors_file = ""
+
+[delta_table]
+# Where Delta's signed legacy table is pulled from (the URL that
+# legacy.json and legacy.json.sig sit under). "" is off.
+source = ""
+# The public keys the table must be signed by (64 hex digits each).
+keys = []
+
+[identity]
+# The issuer certificate (hex), signed by one of the roots below. Without
+# it, /v1/identity/* answer 503 and games keep sending their player keys.
+issuer_cert_file = ""
+# The root public keys this node's issuer certificate chains to.
+roots = []
+# The issuer's signer process (node/identity.py signer), so the web process
+# never reads the issuer key. Preferred in production.
+signer_socket = ""
+# Or the issuer key itself, read by this process (local tests only). Keep it
+# outside the repository, mode 0600.
+issuer_key_file = ""
+# The host names devices sign for; [] is [node.domain].
+audiences = []
+
+[doorbell]
+# The doorbell: rings game copies over MQTT when their friends state
+# changes. Off unless key_file and brokers are both set.
+key_file = ""
+# For example ["mqtts://broker.example.org:8883"].
+brokers = []
+user = "doorbell-site"
+# A file holding the brokers' password, or set DELTA_DOORBELL_PASSWORD.
+password_file = ""
