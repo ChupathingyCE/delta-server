@@ -175,9 +175,25 @@ class Node(unittest.TestCase):
         # (the same state again: the cursor says nothing changed)
         status, again = self.social("tucker", since=answer["cursor"])
         self.assertTrue(again["same"])
-        # (no friend: no join)
+        # (no friend: no join, and a stranger learns nothing: not
+        # "friends only", which would say church is playing)
         status, answer = self.social("caboose", "/v1/social/join", friend="church")
-        self.assertEqual(status, 409)
+        self.assertEqual((status, answer["reason"]), (409, "not_available"))
+        # (an unknown handle stays unknown)
+        self.assertEqual(self.social("caboose", "/v1/social/join", friend="nobody")[0], 404)
+
+    def test_strangers_learn_nothing(self):
+        # (to someone who isn't their friend and has no invite from them,
+        # playing and offline read the same)
+        game = invite()
+        self.assertEqual(self.announce(game)[0], 200)
+        self.assertEqual(self.call("POST", "/v1/presence", {"key": self.copies["church"].player_key, "invite": game}),
+                         (200, "ok\n"))
+        playing = self.social("donut", "/v1/social/join", friend="church")
+        self.assertEqual((playing[0], playing[1]["reason"]), (409, "not_available"))
+        self.node.accounts.presence.clear()
+        offline = self.social("donut", "/v1/social/join", friend="church")
+        self.assertEqual((offline[0], offline[1]), playing)
 
     def test_party(self):
         status, answer = self.social("caboose", "/v1/party", action="create")
