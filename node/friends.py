@@ -13,8 +13,8 @@ friends at once. Kept in reports.db (the reports' database and lock):
                      waiting, never shown to the one it went to)
     blocks           (player_id, blocked_id, created)
     social_privacy   (player_id, requests, join_rule, appear_offline,
-                     clan_presence): only for a profile that changed a
-                     default
+                     clan_presence, page_presence): only for a profile
+                     that changed a default
 
 Privacy, a profile's own: who may send it requests (REQUEST_RULES, "everyone"
 by default), who may join its game through the site (JOIN_RULES, "friends"
@@ -22,8 +22,12 @@ by default; "invite" is only those it invited), and "appear offline" (off by
 default), which shows it offline to everyone, friends too. Who else sees
 whether it's on and what it's playing (CLAN_PRESENCE_RULES): its friends
 only, or its friends and its clan ("friends_and_clan", the default; DELTA's
-clan roster, list_server.py's clan_presence). "Show when I'm playing" stays
-the profiles' presence_hidden (list_server.py).
+clan roster, list_server.py's clan_presence). Who sees its game on its
+profile page (PAGE_PRESENCE_RULES): its friends ("friends", the default) or
+everyone; the player always sees their own. This node has no profile pages,
+so it only keeps the rule and hands it back; a site that shows pages
+follows it. "Show when I'm playing" stays the profiles' presence_hidden
+(list_server.py).
 
 A block is silent: it ends any friendship, drops the requests both ways and
 the invites both ways, and from then on the blocked profile's requests go
@@ -70,8 +74,10 @@ ONLINE_LIFETIME = 150  # (the game asks every 20 s in menus, 60 s in a game)
 REQUEST_RULES = ("everyone", "friends_of_friends", "nobody")
 JOIN_RULES = ("anyone", "friends", "invite")
 CLAN_PRESENCE_RULES = ("friends", "friends_and_clan")
+# who a profile's page shows its game to (a site's page; this node keeps the rule)
+PAGE_PRESENCE_RULES = ("friends", "everyone")
 DEFAULT_PRIVACY = {"requests": "everyone", "join": "friends", "appear_offline": False,
-                   "clan_presence": "friends_and_clan"}
+                   "clan_presence": "friends_and_clan", "page_presence": "friends"}
 
 
 class Refused(Exception):
@@ -117,12 +123,17 @@ class Friends:
             self.database.execute("""CREATE TABLE IF NOT EXISTS social_privacy (
                 player_id TEXT PRIMARY KEY, requests TEXT NOT NULL DEFAULT 'everyone',
                 join_rule TEXT NOT NULL DEFAULT 'friends', appear_offline INTEGER NOT NULL DEFAULT 0,
-                clan_presence TEXT NOT NULL DEFAULT 'friends_and_clan')""")
+                clan_presence TEXT NOT NULL DEFAULT 'friends_and_clan',
+                page_presence TEXT NOT NULL DEFAULT 'friends')""")
             # (a table from before clan presence)
             columns = {row[1] for row in self.database.execute("PRAGMA table_info(social_privacy)")}
             if "clan_presence" not in columns:
                 self.database.execute("ALTER TABLE social_privacy ADD COLUMN clan_presence TEXT NOT NULL "
                                       "DEFAULT 'friends_and_clan'")
+            # (a table from before the page's presence rule)
+            if "page_presence" not in columns:
+                self.database.execute("ALTER TABLE social_privacy ADD COLUMN page_presence TEXT NOT NULL "
+                                      "DEFAULT 'friends'")
             self.database.commit()
 
     # ---------- reading (under the lock)
@@ -159,12 +170,13 @@ class Friends:
         return {b if a == player_id else a for a, b in rows}
 
     def _privacy(self, player_id: str) -> dict:
-        row = self.database.execute("SELECT requests, join_rule, appear_offline, clan_presence FROM social_privacy "
+        row = self.database.execute("SELECT requests, join_rule, appear_offline, clan_presence, page_presence FROM social_privacy "
                                     "WHERE player_id = ?", (player_id,)).fetchone()
         if not row:
             return dict(DEFAULT_PRIVACY)
         return {"requests": row[0], "join": row[1], "appear_offline": bool(row[2]),
-                "clan_presence": row[3] if row[3] in CLAN_PRESENCE_RULES else DEFAULT_PRIVACY["clan_presence"]}
+                "clan_presence": row[3] if row[3] in CLAN_PRESENCE_RULES else DEFAULT_PRIVACY["clan_presence"],
+                "page_presence": row[4] if row[4] in PAGE_PRESENCE_RULES else DEFAULT_PRIVACY["page_presence"]}
 
     def _befriend(self, one: str, two: str, now: int):
         for who in (one, two):
@@ -177,7 +189,7 @@ class Friends:
     # ---------- what the answers are made of
 
     def privacy_of(self, player_id: str) -> dict:
-        """{"requests", "join", "appear_offline", "clan_presence"}"""
+        """{"requests", "join", "appear_offline", "clan_presence", "page_presence"}"""
         with self.lock:
             return self._privacy(player_id)
 
@@ -348,7 +360,8 @@ class Friends:
             self.database.execute("DELETE FROM friend_requests WHERE from_id = ? AND to_id = ? AND silent = 1", (other, player_id))
             self.database.commit()
 
-    def set_privacy(self, player_id: str, requests=None, join=None, appear_offline=None, clan_presence=None) -> dict:
+    def set_privacy(self, player_id: str, requests=None, join=None, appear_offline=None, clan_presence=None,
+                    page_presence=None) -> dict:
         """a profile's social privacy changed (None: left as it is)"""
         if requests is not None and requests not in REQUEST_RULES:
             raise Refused(400, "Friend requests are from everyone, friends of friends or nobody.")
@@ -358,19 +371,22 @@ class Friends:
             raise Refused(400, "Bad request.")
         if clan_presence is not None and clan_presence not in CLAN_PRESENCE_RULES:
             raise Refused(400, "Your status is for friends, or friends and clan.")
+        if page_presence is not None and page_presence not in PAGE_PRESENCE_RULES:
+            raise Refused(400, "Your page shows your game to friends or everyone.")
         with self.lock:
             current = self._privacy(player_id)
             new = {"requests": current["requests"] if requests is None else requests,
                    "join": current["join"] if join is None else join,
                    "appear_offline": current["appear_offline"] if appear_offline is None else appear_offline,
-                   "clan_presence": current["clan_presence"] if clan_presence is None else clan_presence}
+                   "clan_presence": current["clan_presence"] if clan_presence is None else clan_presence,
+                   "page_presence": current["page_presence"] if page_presence is None else page_presence}
             if new == DEFAULT_PRIVACY:
                 self.database.execute("DELETE FROM social_privacy WHERE player_id = ?", (player_id,))
             else:
                 self.database.execute("INSERT OR REPLACE INTO social_privacy (player_id, requests, join_rule, appear_offline, "
-                                      "clan_presence) VALUES (?, ?, ?, ?, ?)",
+                                      "clan_presence, page_presence) VALUES (?, ?, ?, ?, ?, ?)",
                                       (player_id, new["requests"], new["join"], int(new["appear_offline"]),
-                                       new["clan_presence"]))
+                                       new["clan_presence"], new["page_presence"]))
             self.database.commit()
         if new["appear_offline"]:
             with self.memory:

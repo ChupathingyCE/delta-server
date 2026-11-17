@@ -150,8 +150,10 @@ def friends_action(player_id: str, body: dict, who) -> tuple:
             requests = body.get("requests")
             join = body.get("join")
             clan_presence = body.get("clan_presence")
+            page_presence = body.get("page_presence")
             FRIENDS.set_privacy(player_id, None if requests is None else str(requests), None if join is None else str(join), appear,
-                                None if clan_presence is None else str(clan_presence))
+                                None if clan_presence is None else str(clan_presence),
+                                None if page_presence is None else str(page_presence))
     except friends.Refused as refused:
         return refused.status, {"error": refused.message}
     return 200, {}
@@ -260,7 +262,7 @@ def social_state(player_id: str, mark: bool = False, limit: int = 0, clan: bool 
                       "online": not privacy["appear_offline"], "appear_offline": privacy["appear_offline"],
                       "show_presence": not PROFILES.presence_hidden(player_id),
                       "friend_requests": privacy["requests"], "who_can_join": privacy["join"],
-                      "clan_presence": privacy["clan_presence"]},
+                      "clan_presence": privacy["clan_presence"], "page_presence": privacy["page_presence"]},
               "friends": listed, "more": more, "requests": requests, "invites": invites,
               "blocked": FRIENDS.blocked_of(player_id), "recent": recent_players(player_id),
               "counts": {"friends": len(listed) + more, "online": online_count, "requests": len(requests["incoming"]),

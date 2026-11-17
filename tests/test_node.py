@@ -182,6 +182,17 @@ class Node(unittest.TestCase):
         # (an unknown handle stays unknown)
         self.assertEqual(self.social("caboose", "/v1/social/join", friend="nobody")[0], 404)
 
+    def test_page_presence(self):
+        # (who sees the game on a profile's page: kept and handed back)
+        key = self.copies["tucker"].player_key
+        self.assertEqual(self.social("tucker")[1]["you"]["page_presence"], "friends")
+        self.assertEqual(self.call("POST", "/v1/game/friends", {"key": key, "action": "privacy",
+                                                                 "page_presence": "everyone"})[0], 200)
+        self.assertEqual(self.social("tucker")[1]["you"]["page_presence"], "everyone")
+        self.assertEqual(self.call("POST", "/v1/game/friends", {"key": key, "action": "privacy",
+                                                                 "page_presence": "nobody"})[0], 400)
+        self.call("POST", "/v1/game/friends", {"key": key, "action": "privacy", "page_presence": "friends"})
+
     def test_strangers_learn_nothing(self):
         # (to someone who isn't their friend and has no invite from them,
         # playing and offline read the same)
