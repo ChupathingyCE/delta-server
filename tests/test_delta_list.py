@@ -80,7 +80,11 @@ class Parsing(unittest.TestCase):
         self.assertEqual([delta_list.PLATFORM_LABELS[name] for name in ("steamlink", "ios", "tvos")],
                          ["Steam Link", "iPhone and iPad", "Apple TV"])
         self.assertEqual(delta_list.PLATFORM_LABELS["steam_deck"], "SteamOS")
-        self.assertEqual(delta_list.decode_key("1601001010108000")["platform"], "unknown")
+        # (22 the Dreamcast, of 2026-11-14; 23 unassigned)
+        self.assertEqual(delta_list.decode_key("1601001010108000")["platform"], "dreamcast")
+        self.assertEqual(delta_list.PLATFORM_LABELS["dreamcast"], "Dreamcast")
+        self.assertIn("dreamcast", delta_list.PLATFORM_GROUPS["console"])
+        self.assertEqual(delta_list.decode_key("1701001010108000")["platform"], "unknown")
         for bad in ("", "0301", "0300008080800c00", "0301008080800c0", "g301008080800c00", "03" * 40):
             self.assertIsNone(delta_list.decode_key(bad), bad)
 

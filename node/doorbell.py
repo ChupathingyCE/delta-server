@@ -1,22 +1,21 @@
-"""Delta's doorbell (list_server.py): a ring to a copy of the game when
-something changed for its profile (a friend request, becoming friends, an
-invite, a party, a clan's invite, a friend coming online), so its Guide asks for its friends
-state at once instead of on its next poll (chupathingyce's docs/delta.md,
-"The doorbell").
+"""Delta's doorbell: a ring to a copy of the game when something changed
+for its profile (a friend request, becoming friends, an invite, a party, a
+clan's invite, a friend coming online), so the game asks for its friends
+state at once instead of on its next poll (the Delta spec's link.md, "The
+doorbell").
 
 Each linked copy has a doorbell: the first 128 bits of HMAC-SHA256 under
 the doorbell key (a secret only this process has) over its player ID and
 the week (PERIOD), as 32 hex digits, so a doorbell that got out goes stale
-within a week. The site remembers the doorbell it last handed each copy and
+within a week. The node remembers the doorbell it last handed each copy and
 rings that one, so a ring at the turn of the week still reaches the topic
-the copy listens on; its next ask hands it the new one. The friends state the game asks for carries it; the copy
-listens on the MQTT topic doorbell/<doorbell> over the connections internet
-play's signalling already keeps to our brokers (doorbell.chupathingy.org and
-mqtt.chupathingy.org, port 1883), with the doorbell as its MQTT user name.
-The brokers let a client read only doorbell/<its user name>, and only the
-site (the user doorbell-site, on their TLS listener, 8883) write, so a
-doorbell can't be guessed, listened to by anyone else or rung by anyone but
-us.
+the copy listens on; its next ask hands it the new one. The friends state
+the game asks for carries it; the copy listens on the MQTT topic
+doorbell/<doorbell> on the network's own brokers (the [doorbell] brokers
+setting), with the doorbell as its MQTT user name. The brokers should let a
+client read only doorbell/<its user name>, and only the node (the doorbell
+user setting, over TLS) write, so a doorbell can't be guessed, listened to
+by anyone else or rung by anyone but the node.
 
 A ring is MQTT 3.1.1 QoS 0, not retained, one byte: what kind of change
 (RING_KINDS). Nothing else: no handle, no profile, no game. It goes to every

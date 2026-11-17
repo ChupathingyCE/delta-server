@@ -126,6 +126,35 @@ class Rules(unittest.TestCase):
         self.assertIsNone(self.friends.database.execute("SELECT 1 FROM social_privacy WHERE player_id = ?",
                                                         (self.ids["sarge"],)).fetchone())
 
+    def test_page_presence_privacy(self):
+        """who sees a profile's game on its page: friends by default, or
+        everyone; anything else refused, the default not kept as a row"""
+        self.assertEqual(self.friends.privacy_of(self.ids["sarge"])["page_presence"], "friends")
+        self.assertEqual(self.friends.set_privacy(self.ids["sarge"], page_presence="everyone")["page_presence"], "everyone")
+        self.assertEqual(self.friends.privacy_of(self.ids["sarge"])["page_presence"], "everyone")
+        with self.assertRaises(friends.Refused):
+            self.friends.set_privacy(self.ids["sarge"], page_presence="nobody")
+        # (the other rules are left as they were)
+        self.assertEqual(self.friends.privacy_of(self.ids["sarge"])["clan_presence"], "friends_and_clan")
+        self.friends.set_privacy(self.ids["sarge"], page_presence="friends")
+        self.assertIsNone(self.friends.database.execute("SELECT 1 FROM social_privacy WHERE player_id = ?",
+                                                        (self.ids["sarge"],)).fetchone())
+
+    def test_page_presence_on_an_older_table(self):
+        """a social_privacy table from before page_presence gets the column,
+        and its rows read as friends"""
+        database = sqlite3.connect(":memory:", check_same_thread=False)
+        ids = make_profiles(database, ["church"])
+        database.execute("""CREATE TABLE social_privacy (
+            player_id TEXT PRIMARY KEY, requests TEXT NOT NULL DEFAULT 'everyone',
+            join_rule TEXT NOT NULL DEFAULT 'friends', appear_offline INTEGER NOT NULL DEFAULT 0,
+            clan_presence TEXT NOT NULL DEFAULT 'friends_and_clan')""")
+        database.execute("INSERT INTO social_privacy (player_id, requests) VALUES (?, 'nobody')", (ids["church"],))
+        database.commit()
+        older = friends.Friends(database, threading.RLock(), self.clock)
+        privacy = older.privacy_of(ids["church"])
+        self.assertEqual((privacy["requests"], privacy["page_presence"]), ("nobody", "friends"))
+
     def test_request_privacy(self):
         self.friends.set_privacy(self.ids["sarge"], requests="nobody")
         with self.assertRaises(friends.Refused) as refused:
