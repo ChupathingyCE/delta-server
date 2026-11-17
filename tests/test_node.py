@@ -9,6 +9,7 @@ import http.client
 import json
 import os
 import secrets
+import socket
 import tempfile
 import time
 import threading
@@ -299,6 +300,53 @@ class Settings(unittest.TestCase):
     def test_refused(self):
         with self.assertRaises(config.ConfigError):
             config.load("", environ={"DELTA_NODE__DOMAIN": "Not A Host!"})
+
+
+def closed(connection) -> bool:
+    """whether the other side closed the connection unanswered"""
+    try:
+        return connection.recv(100) == b""
+    except ConnectionResetError:
+        return True
+
+
+class Connections(unittest.TestCase):
+    def test_idle_connections_close_and_slots_are_bounded(self):
+        settings = config.load("", environ={})
+        folder = tempfile.TemporaryDirectory()
+        settings["node"].update(domain=AUDIENCE, data=folder.name, database=":memory:")
+        node = delta_node.Node(settings, log=lambda text: None)
+        saved = delta_node.Handler.timeout
+        delta_node.Handler.timeout = 1
+        httpd = delta_node.make_server(node, "127.0.0.1", 0, connections=2)
+        threading.Thread(target=httpd.serve_forever, daemon=True).start()
+        port = httpd.server_address[1]
+        try:
+            # (two connections that send nothing hold both slots)
+            idle = [socket.create_connection(("127.0.0.1", port)) for _ in range(2)]
+            time.sleep(0.2)
+            third = socket.create_connection(("127.0.0.1", port))
+            third.settimeout(5)
+            third.sendall(b"GET /v1/health HTTP/1.0\r\n\r\n")
+            self.assertTrue(closed(third))
+            third.close()
+            # (the idle ones close after the timeout, and a request is answered again)
+            for connection in idle:
+                connection.settimeout(5)
+                self.assertTrue(closed(connection))
+                connection.close()
+            time.sleep(0.2)
+            later = socket.create_connection(("127.0.0.1", port))
+            later.settimeout(5)
+            later.sendall(b"GET /v1/health HTTP/1.0\r\n\r\n")
+            self.assertTrue(later.recv(100).startswith(b"HTTP/1.0 200"))
+            later.close()
+        finally:
+            delta_node.Handler.timeout = saved
+            httpd.shutdown()
+            httpd.server_close()
+            node.close()
+            folder.cleanup()
 
 
 if __name__ == "__main__":
