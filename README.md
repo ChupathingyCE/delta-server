@@ -64,12 +64,15 @@ must also answer at `https://example.org/.well-known/open-network/roots.json`
 Make a new issuer key and certificate every few months.
 
 A list of networks is made from networks' roots.json files and signed by
-whoever publishes it; a node can serve one at `/v1/delta/networks`:
+whoever publishes it, with a key set of its own (never the signed table's);
+a node can serve one at `/v1/delta/networks`. Games check only their own
+network's revocation list for now, so another network's revoked device
+stays verified until its certificate expires (7 days):
 
 ```
-python3 node/federation.py list-key --out LIST.key
+python3 node/federation.py list-keys --dir LISTKEYS                  # the list's own primary + recovery
 python3 node/federation.py list-make --serial 1 --roots a/roots.json b/roots.json --out networks.json
-python3 node/federation.py list-sign --key LIST.key networks.json
+python3 node/federation.py list-sign --key LISTKEYS/list-primary.key networks.json
 python3 node/federation.py check --list networks.json --list-key <hex> --home example.org \
     --home-root <hex> --issuer <CISS hex> --device <CDEV hex>
 ```

@@ -107,6 +107,24 @@ class Domains(unittest.TestCase):
                     "a" * 250 + ".org", "ex ample.org", "example.org\n", "exämple.org", None, 5):
             self.assertFalse(federation.valid_domain(bad), bad)
 
+    def test_ascii_only(self):
+        for bad in ("exämple.org", "example.org\u200b", "ex\u200bample.org", "\uff45xample.org", "example.\u043erg",
+                    "xn--exmple-cua.org", "a.xn--p1ai", "sub.xn--abc.example.org", "xn--80ak6aa92e.com"):
+            self.assertFalse(federation.valid_domain(bad), bad)
+            self.assertIsNone(federation.parse_qualified("milenko:" + bad, HOME), bad)
+        # (Unicode that lowercases to ASCII, the Kelvin sign to k, is refused before lowercasing)
+        self.assertIsNone(federation.parse_qualified("milen\u212ao:example.org", HOME))
+        self.assertIsNone(federation.parse_qualified("milenko:\u212aexample.org", HOME))
+        self.assertEqual(federation.parse_qualified("MILENKO:EXAMPLE.ORG", HOME), ("milenko", "example.org"))
+        self.assertEqual(federation.parse_qualified("MILENKO:XN--EXMPLE-CUA.ORG", HOME), None)
+        key = VECTORS["example.org"]["root_primary"]
+        with self.assertRaises(federation.FederationError):
+            federation.parse_local(f"\u212aexample.org {key}")
+        with self.assertRaises(federation.FederationError):
+            federation.parse_local(f"xn--exmple-cua.org {key}")
+        with self.assertRaises(federation.FederationError):
+            federation.parse_roots(roots_document(domain="xn--exmple-cua.org"))
+
     def test_qualified(self):
         self.assertEqual(federation.qualified("milenko", "example.org"), "milenko:example.org")
         with self.assertRaises(federation.FederationError):
@@ -335,16 +353,19 @@ class Tool(unittest.TestCase):
         self.assertEqual(code, 0, out)
         fields = identity.parse_issuer(identity.read_hex_file(str(root / "issuer.cert")))
         self.assertEqual(identity.check_issuer(fields, [roots["roots"][0]["key"]], int(time.time())), "")
-        code, out = run("list-key", "--out", root / "list.key")
-        public = out.split()[-1]
+        code, out = run("list-keys", "--dir", root / "list")
+        self.assertEqual(code, 0, out)
+        public = out.splitlines()[0].split()[3]
+        self.assertNotEqual(public, out.splitlines()[1].split()[3])
+        self.assertEqual(run("list-keys", "--dir", root / "list")[0], 2)  # never overwrites
         self.assertEqual(run("list-make", "--serial", 3, "--roots", root / "keys" / "roots.json",
                              "--out", root / "networks.json")[0], 0)
-        self.assertEqual(run("list-sign", "--key", root / "list.key", root / "networks.json")[0], 0)
+        self.assertEqual(run("list-sign", "--key", root / "list" / "list-primary.key", root / "networks.json")[0], 0)
         code, out = run("list-verify", "--public-key", public, root / "networks.json")
         self.assertEqual((code, out.strip()), (0, "list serial 3: example.org"))
         self.assertEqual(run("list-verify", "--public-key", "00" * 32, root / "networks.json")[0], 2)
         (root / "bad.json").write_text('{"open_networks": 1}')
-        self.assertEqual(run("list-sign", "--key", root / "list.key", root / "bad.json")[0], 2)
+        self.assertEqual(run("list-sign", "--key", root / "list" / "list-primary.key", root / "bad.json")[0], 2)
 
 
 class TwoNetworks(unittest.TestCase):

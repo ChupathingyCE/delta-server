@@ -33,7 +33,14 @@ signature is the list key's over LIST_LABEL + the document's exact bytes):
 
     0 to NETWORKS_MOST networks, 1 to 4 roots each, no root key twice in the
     whole list. A serial's top byte is its epoch, as the signed table's:
-    each list key signs serials up to its own last epoch.
+    each list key signs serials up to its own last epoch (the primary 0,
+    the recovery key 255). The list has a key set of its own, a primary and
+    a recovery key used for nothing else, never the signed table's keys.
+
+Other networks' revocation lists aren't read: a game applies its home
+network's list alone, and another network's revoked device stays verified
+until its certificate expires (7 days, 14 on consoles). Checking them is
+later.
 
 The parsers are strict: a size limit first, then (for the list) the
 signature, then JSON with no repeated keys, no fractions, no NaN, nesting
@@ -47,8 +54,9 @@ skipped. Anything else refuses the whole file.
         roots.json again from root key files (a rotation, a new "until")
     federation.py issuer-cert --root-key FILE --issuer-public HEX [--days 90] --out FILE
         an issuer certificate (CISS) for a network's issuer, signed by a root key
-    federation.py list-key --out FILE
-        a key for signing lists of networks
+    federation.py list-keys --dir DIR
+        the list's own key set: DIR/list-primary.key and DIR/list-recovery.key
+        (0600); never the signed table's keys
     federation.py list-make --serial N [--from FILE] [--issued UNIX] --roots FILE... --out FILE
         a list of networks from networks' roots.json files (each one checked)
     federation.py list-sign --key FILE LIST                (writes LIST.sig)
@@ -109,10 +117,11 @@ class FederationError(ValueError):
 
 
 def valid_domain(domain) -> bool:
-    """a network's domain: lowercase ASCII host name of two labels or more,
-    253 characters at most, a last label of letters (so never an address),
-    and no punycode (xn--) label, which could look like another network"""
-    if not isinstance(domain, str) or not 4 <= len(domain) <= 253:
+    """a network's domain: lowercase ASCII host name (a-z, 0-9, - and .
+    alone) of two labels or more, 253 characters at most, a last label of
+    letters (so never an address), and no punycode (xn--) label, which
+    could look like another network"""
+    if not isinstance(domain, str) or not 4 <= len(domain) <= 253 or not domain.isascii():
         return False
     labels = domain.split(".")
     if len(labels) < 2 or not TOP_LABEL.fullmatch(labels[-1]):
@@ -130,8 +139,10 @@ def qualified(handle: str, domain: str) -> str:
 def parse_qualified(text, home: str):
     """(handle, domain) from what a player typed: "handle:domain", or a
     handle alone for the home network; any capitals; None if it isn't one"""
-    if not isinstance(text, str) or len(text) > 20 + 1 + 253:
+    if not isinstance(text, str) or len(text) > 20 + 1 + 253 or not text.isascii():
         return None
+    # (ASCII checked before lowercasing: Unicode lowercases some letters,
+    # such as the Kelvin sign, to ASCII ones)
     text = text.strip().lower()
     handle, colon, domain = text.partition(":")
     if not colon:
@@ -362,7 +373,7 @@ def parse_local(text: str):
     """(domain, [keys]) from a local addition, "domain key [key...]"
     (spaces between), or FederationError"""
     words = str(text).split()
-    if len(words) < 2 or len(words) > 1 + ROOT_KEYS_MOST or not valid_domain(words[0].lower()):
+    if not str(text).isascii() or len(words) < 2 or len(words) > 1 + ROOT_KEYS_MOST or not valid_domain(words[0].lower()):
         raise FederationError("a local network is a domain and 1 to 4 root keys")
     return words[0].lower(), [_key(word.lower()) for word in words[1:]]
 
@@ -377,7 +388,7 @@ class Networks:
         self.networks = {home: [(key, 0) for key in home_roots]}
         self.local = set()
         owner = {key: home for key in home_roots}
-        removed = {str(domain).strip().lower() for domain in remove} - {home}
+        removed = {str(domain).strip().lower() for domain in remove if str(domain).isascii()} - {home}
 
         def take(domain, roots, local):
             if domain in self.networks or domain in removed:
@@ -483,8 +494,8 @@ def main(argv=None) -> int:
     command.add_argument("--issuer-public", required=True)
     command.add_argument("--days", type=int, default=90)
     command.add_argument("--out", required=True)
-    command = commands.add_parser("list-key")
-    command.add_argument("--out", required=True)
+    command = commands.add_parser("list-keys")
+    command.add_argument("--dir", required=True)
     command = commands.add_parser("list-make")
     command.add_argument("--serial", type=int, required=True)
     command.add_argument("--from", dest="previous", default="")
@@ -540,10 +551,13 @@ def main(argv=None) -> int:
                 handle.write(certificate.hex() + "\n")
             print(f"issuer {identity.key_id(public).hex()} certificate written")
             return 0
-        if arguments.command == "list-key":
-            seed = secrets.token_bytes(32)
-            write_secret(arguments.out, seed)
-            print(f"list key {ed25519.public_key(seed).hex()}")
+        if arguments.command == "list-keys":
+            os.makedirs(arguments.dir, exist_ok=True)
+            for use in ("primary", "recovery"):
+                seed = secrets.token_bytes(32)
+                write_secret(os.path.join(arguments.dir, f"list-{use}.key"), seed)
+                print(f"list {use} key {ed25519.public_key(seed).hex()} (last epoch "
+                      f"{0 if use == 'primary' else 255})")
             return 0
         if arguments.command == "list-make":
             networks = {}
