@@ -42,6 +42,38 @@ keys. `python3 node/identity.py issuer-key --out FILE` makes an issuer key
 (keep it outside the repository); signing its certificate is up to whoever
 holds your root keys.
 
+## Run your own network
+
+A node is one network on the spec's federation ([federation.md](https://github.com/ChupathingyCE/delta-spec/blob/main/federation.md)):
+its players' names are `handle:yourdomain`, and any game that trusts your
+root keys checks them offline. Keep root keys off the server, on a machine
+you trust, and never in a repository:
+
+```
+python3 node/federation.py root-keys --domain example.org --dir KEYS     # two root keys + roots.json
+python3 node/identity.py issuer-key --out ISSUER.key                      # on the server
+python3 node/federation.py issuer-cert --root-key KEYS/example.org-root-primary.key \
+    --issuer-public <the issuer's public key> --out issuer.cert           # back on the root keys' machine
+```
+
+Then set `[federation] network` and `roots_file` (the roots.json) and
+`[identity] issuer_cert_file` and `signer_socket` (or `issuer_key_file` for
+local tests). The node serves `/.well-known/open-network/roots.json`; it
+must also answer at `https://example.org/.well-known/open-network/roots.json`
+(your reverse proxy), which is where lists of networks take your keys from.
+Make a new issuer key and certificate every few months.
+
+A list of networks is made from networks' roots.json files and signed by
+whoever publishes it; a node can serve one at `/v1/delta/networks`:
+
+```
+python3 node/federation.py list-key --out LIST.key
+python3 node/federation.py list-make --serial 1 --roots a/roots.json b/roots.json --out networks.json
+python3 node/federation.py list-sign --key LIST.key networks.json
+python3 node/federation.py check --list networks.json --list-key <hex> --home example.org \
+    --home-root <hex> --issuer <CISS hex> --device <CDEV hex>
+```
+
 Tests:
 
 ```
@@ -66,9 +98,9 @@ from `DELTA_DOORBELL_PASSWORD`. Any string setting can also be set as
 
 ## Not done yet
 
-- **Federation**: handle:domain names, trusting other nodes' issuers,
-  friends and parties across nodes. See the spec's federation.md; the code
-  marks the places with `TODO(federation)`.
+- **Federation between networks' social parts**: friends, invites and
+  parties across networks. Names, roots.json and the list of networks are
+  in (above); the code marks the rest with `TODO(federation)`.
 - **Accounts**: sign-up, passwords, email and web sign-in are the site's
   today. Whether a node keeps passwords, or only device keys, is open.
 - **Production hardening**: TLS is a reverse proxy's job; the signer

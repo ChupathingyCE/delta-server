@@ -41,6 +41,11 @@ DEFAULTS = {
         "issuer_key_file": "",
         "audiences": [],
     },
+    "federation": {
+        "network": "",
+        "roots_file": "",
+        "networks_file": "",
+    },
     "doorbell": {
         "key_file": "",
         "brokers": [],
@@ -105,6 +110,13 @@ def check(settings: dict) -> None:
     for key in settings["delta_table"]["keys"] + settings["identity"]["roots"]:
         if not re.fullmatch(r"[0-9a-fA-F]{64}", str(key)):
             raise ConfigError("public keys are 64 hex digits each")
+    check_federation(settings)
+
+
+def check_federation(settings: dict) -> None:
+    network = settings["federation"]["network"]
+    if network and not re.fullmatch(r"[a-z0-9.-]{4,253}", str(network)):
+        raise ConfigError("federation.network is this network's domain (a-z, 0-9, dots and dashes)")
 
 
 def data_folder(settings: dict) -> Path:
