@@ -45,8 +45,8 @@ import blocked_names
 
 CLAN_NAME_LENGTH = 32
 MOTTO_LENGTH = 64
-TAG_PATTERN = re.compile(r"^[A-Za-z0-9]{2,8}$")
-NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 '.&_-]{1,31}$")
+TAG_PATTERN = re.compile(r"^[A-Za-z0-9]{2,8}\Z")
+NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 '.&_-]{1,31}\Z")
 RANKS = ("leader", "officer", "member")
 CLAN_MEMBERS = 50  # members in a clan, at most
 CLAN_INVITES = 50  # a clan's invites waiting, at most

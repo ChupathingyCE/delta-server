@@ -206,10 +206,10 @@ CONSOLE_DAYS_KEPT = 60
 # (shown with a device whose code was typed in, before it is approved)
 CODE_WARNING = "Only enter a code shown on your own screen."
 
-HANDLE = re.compile(r"^[a-z0-9_-]{3,20}$")
-HEX64 = re.compile(r"^[0-9a-f]{64}$")
-HEX32 = re.compile(r"^[0-9a-f]{32}$")
-HEX128 = re.compile(r"^[0-9a-f]{128}$")
+HANDLE = re.compile(r"^[a-z0-9_-]{3,20}\Z")
+HEX64 = re.compile(r"^[0-9a-f]{64}\Z")
+HEX32 = re.compile(r"^[0-9a-f]{32}\Z")
+HEX128 = re.compile(r"^[0-9a-f]{128}\Z")
 
 
 def key_id(public: bytes) -> bytes:
@@ -267,7 +267,7 @@ def check_issuer(fields, roots, now: int) -> str:
 def device_body(platform: int, flags: int, issued: int, expires: int, serial: bytes, issuer_key_id: bytes,
                 account: bytes, public: bytes, capabilities: int, handle: str) -> bytes:
     raw = handle.encode("ascii") if handle else b""
-    if raw and not HANDLE.match(handle):
+    if raw and not HANDLE.fullmatch(handle):
         raise ValueError("a handle is 3 to 20 of a-z, 0-9, _ and -")
     if len(serial) != 8 or len(issuer_key_id) != 8 or len(account) != 16 or len(public) != 32:
         raise ValueError("a field of the wrong size")
@@ -291,7 +291,7 @@ def parse_device(data: bytes):
         handle = handle.decode("ascii")
     except UnicodeDecodeError:
         return None
-    if handle and not HANDLE.match(handle):
+    if handle and not HANDLE.fullmatch(handle):
         return None
     issued, expires = struct.unpack("<II", data[8:16])
     if not issued < expires:
@@ -373,7 +373,7 @@ def check_revoked(fields, issuer) -> str:
 
 def site_body(issued: int, expires: int, issuer_key_id: bytes, account: bytes, nonce: bytes, audience: str,
               handle: str) -> bytes:
-    if not HANDLE.match(handle or "") or not AUDIENCE.match(audience or ""):
+    if not HANDLE.fullmatch(handle or "") or not AUDIENCE.fullmatch(audience or ""):
         raise ValueError("a handle is 3 to 20 of a-z, 0-9, _ and -, and an audience a host name")
     if len(issuer_key_id) != 8 or len(account) != 16 or len(nonce) != 32:
         raise ValueError("a field of the wrong size")
@@ -399,7 +399,7 @@ def parse_site(data: bytes):
         handle = data[SITE_HEADER + audience_length:end].decode("ascii")
     except UnicodeDecodeError:
         return None
-    if not AUDIENCE.match(audience) or not HANDLE.match(handle):
+    if not AUDIENCE.fullmatch(audience) or not HANDLE.fullmatch(handle):
         return None
     issued, expires = struct.unpack("<II", data[8:16])
     if not issued < expires:
@@ -434,13 +434,13 @@ def check_site(fields, issuer, audience: str, nonce: bytes, now: int) -> str:
     return ""
 
 
-AUDIENCE = re.compile(r"^[a-z0-9.-]{1,253}$")
+AUDIENCE = re.compile(r"^[a-z0-9.-]{1,253}\Z")
 # (a node names its own host names: config identity.audiences, else node.domain)
 DEFAULT_AUDIENCES = ("localhost",)
 
 
 def audience_bytes(audience: str) -> bytes:
-    if not AUDIENCE.match(audience):
+    if not AUDIENCE.fullmatch(audience):
         raise ValueError("an audience is a host name")
     return bytes((len(audience),)) + audience.encode("ascii")
 
@@ -666,7 +666,7 @@ class Tokens:
 
     LIFETIME = 3600
     PREFIX = "d1."
-    TOKEN = re.compile(r"^d1\.[0-9a-f]{48}\.[0-9a-f]{64}$")
+    TOKEN = re.compile(r"^d1\.[0-9a-f]{48}\.[0-9a-f]{64}\Z")
 
     def __init__(self, key: bytes = None, clock=time.time):
         self._key = key or secrets.token_bytes(32)
@@ -794,7 +794,7 @@ class Identity:
         self.platforms = tuple(platforms)
         self.clock = clock
         self.audiences = tuple(audience.lower() for audience in audiences)
-        if not self.audiences or not all(AUDIENCE.match(audience) for audience in self.audiences):
+        if not self.audiences or not all(AUDIENCE.fullmatch(audience) for audience in self.audiences):
             raise ValueError("audiences are the site's host names")
         self.tokens = Tokens(clock=clock)
         self.nonces = Nonces(clock=clock)
@@ -957,7 +957,7 @@ class Identity:
         body = device_body(number, flags, issued, expires, secrets.token_bytes(8), self.issuer["key_id"],
                            bytes.fromhex(account), bytes.fromhex(row["public_key"]),
                            row["capabilities"] & self._client_mask(row),
-                           handle if handle and HANDLE.match(handle) else "")
+                           handle if handle and HANDLE.fullmatch(handle) else "")
         certificate = body + self.signer.sign("device", body)
         with self.lock:
             self.database.execute("UPDATE devices SET account_id = ?, last_refresh = ?, last_used = ? WHERE device_id = ?",

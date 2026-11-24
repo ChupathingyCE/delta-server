@@ -20,6 +20,9 @@ has the same part:
     GET  /v1/console/games          the console list (plain text, warthog-list 1)
     GET  /v1/anchors.txt            the ping anchors (list.anchors_file)
     GET  /v1/delta/legacy(.sig)     Delta's signed legacy table, when delta_table.source is set
+    GET  /.well-known/open-network/roots.json
+                                    this network's root keys (federation.roots_file)
+    GET  /v1/delta/networks(.sig)   a signed list of networks (federation.networks_file)
     GET  /v1/identity/nonce, /v1/identity/revoked
     POST /v1/identity/legacy/enroll, refresh, token, device/start, device/poll,
          device/confirm, device/signout, devices, device/revoke
@@ -32,8 +35,11 @@ has the same part:
 A copy of the game proves itself with its player key ({"key": hex}) or a
 device token (Authorization: Delta ...), as on the site.
 
-TODO(federation): handle:domain names, other nodes' issuers and lists, and
-friends between nodes are delta-spec's federation.md; none of it is here.
+Federation (delta-spec's federation.md): the node is one network,
+federation.network (node.domain unless set), and its players' names are
+handle:domain. It publishes its root keys and may serve a signed list of
+networks; checking other networks' names is federation.py's, offline.
+TODO(federation): friends, invites and parties between networks.
 
 SPDX-FileCopyrightText: 2026 Milenko x Horrible Dev
 SPDX-License-Identifier: MIT
@@ -59,6 +65,8 @@ import delta_clients  # noqa: E402
 import delta_list  # noqa: E402
 import delta_table  # noqa: E402
 import doorbell  # noqa: E402
+import ed25519  # noqa: E402
+import federation  # noqa: E402
 import friends  # noqa: E402
 import game_list  # noqa: E402
 import game_list_rules  # noqa: E402
@@ -126,6 +134,15 @@ class Node:
             self.parties.ring = self.doorbell.ring
             self.accounts.on_presence = lambda player_id: self.ring_friends_of(player_id, "presence")
         self.clients = delta_clients.Clients(self.database, self.lock, delta_list.PLATFORMS)
+        # (the network's domain: none when node.domain isn't one and none is set)
+        self.network = settings["federation"]["network"] or (
+            self.domain if federation.valid_domain(self.domain) else "")
+        self.roots_json, self.roots = self._roots()
+        if self.roots and settings["identity"]["issuer_cert_file"]:
+            issuer = identity.parse_issuer(identity.read_hex_file(settings["identity"]["issuer_cert_file"]))
+            if not issuer or not any(ed25519.verify(key, identity.ISSUER_LABEL + issuer["body"], issuer["signature"])
+                                     for key in self.roots):
+                raise config.ConfigError("the issuer certificate isn't signed by a root key of federation.roots_file")
         self.identity = self._identity()
         if self.identity is not None:
             self.identity.clients = self.clients
@@ -153,10 +170,29 @@ class Node:
         self.log("doorbell: ringing on " + ", ".join(b.host for b in brokers))
         return ring
 
+    def _roots(self):
+        """this network's roots.json (checked: format, its domain, every
+        proof) and its keys, or (None, [])"""
+        path = self.settings["federation"]["roots_file"]
+        if not path:
+            return None, []
+        data = Path(path).read_bytes()[:federation.ROOTS_MOST + 1]
+        try:
+            roots = federation.parse_roots(data, self.network)
+        except federation.FederationError as problem:
+            raise config.ConfigError(f"federation.roots_file: {problem}") from None
+        keys = [root["key"] for root in roots["roots"]]
+        configured = {bytes.fromhex(key.lower()) for key in self.settings["identity"]["roots"]}
+        if configured and configured != set(keys):
+            raise config.ConfigError("identity.roots and federation.roots_file name different root keys "
+                                     "(leave identity.roots empty to use the file's)")
+        return data, keys
+
     def _identity(self):
         settings = self.settings["identity"]
         audiences = settings["audiences"] or [self.domain]
-        return identity.setup(self.database, self.lock, settings["issuer_cert_file"], ",".join(settings["roots"]),
+        roots = settings["roots"] or [key.hex() for key in self.roots]
+        return identity.setup(self.database, self.lock, settings["issuer_cert_file"], ",".join(roots),
                               settings["signer_socket"], settings["issuer_key_file"], self.accounts.account_of,
                               None, delta_list.PLATFORMS, log=self.log, audiences_text=",".join(audiences),
                               hooks={"copies_of": self.accounts.copies_of, "link_copy": self.accounts.link_copy,
@@ -184,7 +220,8 @@ class Node:
         return self.versions.get() if self.versions else None
 
     def info(self) -> dict:
-        return {"domain": self.domain, "software": "delta-server", "version": VERSION, "federation": False,
+        return {"domain": self.domain, "network": self.network, "software": "delta-server", "version": VERSION,
+                "federation": self.roots_json is not None,
                 "services": {"list": True, "identity": self.identity is not None, "social": True,
                              "doorbell": self.doorbell is not None, "legacy_table": self.table is not None}}
 
@@ -239,6 +276,16 @@ class Handler(BaseHTTPRequestHandler):
 
     def reply(self, code: int, body: str, content_type: str = "text/plain; charset=utf-8"):
         data = body.encode("utf-8")
+        self.send_response(code)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        if self.command != "HEAD":
+            self.wfile.write(data)
+
+    def reply_bytes(self, code: int, data: bytes, content_type: str):
+        """a file's bytes exactly as they are (a signed one must not change)"""
         self.send_response(code)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(data)))
@@ -338,6 +385,23 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(200, "".join(line + "\n" for line in lines))
         if path == "/v1/anchors.txt":
             return self.reply(200, node.anchors)
+        if path == federation.ROOTS_PATH:
+            if node.roots_json is None:
+                return self.reply(404, "not found\n")
+            return self.reply_bytes(200, node.roots_json, "application/json")
+        if path in federation.LIST_PATHS:
+            name = node.settings["federation"]["networks_file"]
+            try:
+                data = None
+                if name:
+                    with open(name + (".sig" if path.endswith(".sig") else ""), "rb") as handle:
+                        data = handle.read(federation.LIST_MOST + 1)
+            except OSError:
+                data = None
+            if data is None or len(data) > federation.LIST_MOST:
+                return self.reply(404, "no list\n")
+            return self.reply_bytes(200, data,
+                                    "text/plain; charset=us-ascii" if path.endswith(".sig") else "application/json")
         if path in DELTA_LEGACY_FILES:
             name, content_type = DELTA_LEGACY_FILES[path]
             try:

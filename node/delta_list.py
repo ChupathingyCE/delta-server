@@ -135,8 +135,8 @@ FILTERS = {
     "hosting": HOSTINGS + ("",),
     "protocol": PROTOCOLS + ("",),
 }
-BUILD = re.compile(r"^[0-9A-Za-z][0-9A-Za-z.+_-]{0,23}$")
-HEX = re.compile(r"^[0-9a-fA-F]+$")
+BUILD = re.compile(r"^[0-9A-Za-z][0-9A-Za-z.+_-]{0,23}\Z")
+HEX = re.compile(r"^[0-9a-fA-F]+\Z")
 
 
 def decode_key(text: str):

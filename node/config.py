@@ -41,6 +41,11 @@ DEFAULTS = {
         "issuer_key_file": "",
         "audiences": [],
     },
+    "federation": {
+        "network": "",
+        "roots_file": "",
+        "networks_file": "",
+    },
     "doorbell": {
         "key_file": "",
         "brokers": [],
@@ -51,7 +56,7 @@ DEFAULTS = {
 
 # environment variables that take a setting's place (secrets and paths a
 # host keeps out of the file): DELTA_<SECTION>_<NAME>
-ENVIRONMENT = re.compile(r"^DELTA_([A-Z_]+?)__([A-Z_]+)$")
+ENVIRONMENT = re.compile(r"^DELTA_([A-Z_]+?)__([A-Z_]+)\Z")
 SECRET_ENVIRONMENT = {
     # the doorbell brokers' password itself, in place of a password file
     "DELTA_DOORBELL_PASSWORD": ("doorbell", "password"),
@@ -105,6 +110,22 @@ def check(settings: dict) -> None:
     for key in settings["delta_table"]["keys"] + settings["identity"]["roots"]:
         if not re.fullmatch(r"[0-9a-fA-F]{64}", str(key)):
             raise ConfigError("public keys are 64 hex digits each")
+    check_federation(settings)
+
+
+def check_federation(settings: dict) -> None:
+    """federation.network, or node.domain in its place once the node
+    publishes root keys, must be a network's domain (federation.py's rules)"""
+    import federation
+    network = settings["federation"]["network"]
+    for name in ("network", "roots_file", "networks_file"):
+        if not isinstance(settings["federation"][name], str):
+            raise ConfigError(f"federation.{name} is a string")
+    if network and not federation.valid_domain(network):
+        raise ConfigError("federation.network is this network's domain (lowercase ASCII a-z, 0-9, dashes and "
+                          "dots, no xn--)")
+    if settings["federation"]["roots_file"] and not federation.valid_domain(network or settings["node"]["domain"]):
+        raise ConfigError("federation.roots_file needs federation.network, a network's domain")
 
 
 def data_folder(settings: dict) -> Path:

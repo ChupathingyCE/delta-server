@@ -19,9 +19,9 @@ from collections import defaultdict
 
 from game_list import rate_key
 
-PLAYER_KEY = re.compile(r"^[0-9a-f]{64}$")
-PLAYER_ID = re.compile(r"^[0-9a-f]{32}$")
-HANDLE = re.compile(r"^[a-z0-9_-]{3,20}$")
+PLAYER_KEY = re.compile(r"^[0-9a-f]{64}\Z")
+PLAYER_ID = re.compile(r"^[0-9a-f]{32}\Z")
+HANDLE = re.compile(r"^[a-z0-9_-]{3,20}\Z")
 PRESENCE_LIFETIME = 180
 PRESENCE_PER_ADDRESS = 600  # an hour
 GAME_REQUESTS_PER_KEY = 6  # a minute
@@ -72,7 +72,7 @@ class Accounts:
         handle = handle.strip().lower()
         if not PLAYER_ID.match(player_id):
             return "bad player ID"
-        if not HANDLE.match(handle):
+        if not HANDLE.fullmatch(handle):
             return "a handle is 3 to 20 of a-z, 0-9, _ and -"
         if handle in self.reserved:
             return "that name is reserved"
