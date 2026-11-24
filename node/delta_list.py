@@ -94,18 +94,18 @@ import mcc_maps
 # first byte, never reused
 PLATFORMS = ("unknown", "pc_windows", "pc_macos", "pc_linux", "android", "steam_deck", "xbox", "xbox360", "wiiu",
              "switch", "psp", "vita", "xbox_uwp", "pc_freebsd", "ps3", "ps4", "ps5", "n64", "pc_legacy", "steamlink", "ios",
-             "tvos")
+             "tvos", "dreamcast")
 PLATFORM_LABELS = {
     "unknown": "Unknown", "pc_windows": "Windows", "pc_macos": "Mac", "pc_linux": "Linux", "android": "Android",
     "steam_deck": "SteamOS", "xbox": "Xbox", "xbox360": "Xbox 360", "wiiu": "Wii U", "switch": "Switch",
     "psp": "PSP", "vita": "Vita", "xbox_uwp": "Xbox Series", "pc_freebsd": "FreeBSD", "ps3": "PS3", "ps4": "PS4",
     "ps5": "PS5", "n64": "Nintendo 64", "pc_legacy": "Legacy PC", "steamlink": "Steam Link", "ios": "iPhone and iPad",
-    "tvos": "Apple TV",
+    "tvos": "Apple TV", "dreamcast": "Dreamcast",
 }
 # the filters' groups of platforms
 PLATFORM_GROUPS = {
     "pc": ("pc_windows", "pc_macos", "pc_linux", "pc_freebsd", "pc_legacy"),
-    "console": ("xbox", "xbox360", "wiiu", "switch", "xbox_uwp", "ps3", "ps4", "ps5", "n64", "steamlink", "tvos"),
+    "console": ("xbox", "xbox360", "wiiu", "switch", "xbox_uwp", "ps3", "ps4", "ps5", "n64", "steamlink", "tvos", "dreamcast"),
     "handheld": ("android", "steam_deck", "psp", "vita", "ios"),
 }
 # the platform key's flags (delta.h, DELTA_PLATFORM_KEY_*)

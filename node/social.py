@@ -118,6 +118,7 @@ JOIN_REASONS = {
     "locked": "Their game has a password. Ask them for the invite link.",
     "full": "Their game is full.",
     "closed": "Their game isn't taking players right now.",
+    "not_available": "You can't join their game.",
 }
 
 
@@ -149,8 +150,10 @@ def friends_action(player_id: str, body: dict, who) -> tuple:
             requests = body.get("requests")
             join = body.get("join")
             clan_presence = body.get("clan_presence")
+            page_presence = body.get("page_presence")
             FRIENDS.set_privacy(player_id, None if requests is None else str(requests), None if join is None else str(join), appear,
-                                None if clan_presence is None else str(clan_presence))
+                                None if clan_presence is None else str(clan_presence),
+                                None if page_presence is None else str(page_presence))
     except friends.Refused as refused:
         return refused.status, {"error": refused.message}
     return 200, {}
@@ -259,7 +262,7 @@ def social_state(player_id: str, mark: bool = False, limit: int = 0, clan: bool 
                       "online": not privacy["appear_offline"], "appear_offline": privacy["appear_offline"],
                       "show_presence": not PROFILES.presence_hidden(player_id),
                       "friend_requests": privacy["requests"], "who_can_join": privacy["join"],
-                      "clan_presence": privacy["clan_presence"]},
+                      "clan_presence": privacy["clan_presence"], "page_presence": privacy["page_presence"]},
               "friends": listed, "more": more, "requests": requests, "invites": invites,
               "blocked": FRIENDS.blocked_of(player_id), "recent": recent_players(player_id),
               "counts": {"friends": len(listed) + more, "online": online_count, "requests": len(requests["incoming"]),
@@ -284,6 +287,11 @@ def social_join(viewer: str, handle: str) -> tuple:
     reason = "offline" if not online else ("not_playing" if invite is None else "")
     if not reason:
         reason = join_refusal(viewer, friend, invite, game, FRIENDS.privacy_of(friend)["join"])
+    # (to someone who isn't their friend and has no invite from them, every
+    # refusal reads the same, so it can't tell whether they're online or
+    # playing; a game open to anyone still lets them join)
+    if reason and not FRIENDS.are_friends(viewer, friend) and not FRIENDS.invited(viewer, friend):
+        reason = "not_available"
     if reason:
         return 409, {"error": JOIN_REASONS[reason], "reason": reason}
     return 200, {"join": "halo://join/" + invite, "friend": PROFILES.get(friend)["handle"], "game": social_game(game)}

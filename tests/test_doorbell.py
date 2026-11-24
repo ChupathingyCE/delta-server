@@ -44,6 +44,11 @@ class Clock:
 
 
 class Doorbells(unittest.TestCase):
+    def test_names_no_network(self):
+        # (the brokers are the node's setting: the module names no network's hosts)
+        self.assertNotIn("chupathingy.org", doorbell.__doc__)
+        self.assertNotIn("1883", doorbell.__doc__)
+
     def test_topic_ids(self):
         key = bytes(range(32))
         one = doorbell.topic_id(key, "0123456789abcdef0123456789abcdef", 2900)

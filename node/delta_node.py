@@ -68,7 +68,10 @@ import social  # noqa: E402
 
 VERSION = "0.1.0"
 MAXIMUM_BODY = 2048
+# a connection that sends nothing for REQUEST_TIMEOUT seconds is closed; at
+# most MAXIMUM_CONNECTIONS are served at once, and one more is closed at once
 REQUEST_TIMEOUT = 20
+MAXIMUM_CONNECTIONS = 64
 GAME_AGENT_PREFIX = "chupathingyce"
 LOCKED_ERROR = "This profile is locked."
 FIRST_COPY_ERROR = "This is the copy that made the profile."
@@ -564,12 +567,35 @@ class Handler(BaseHTTPRequestHandler):
 
 
 class Server(ThreadingHTTPServer):
+    """each request in a thread of its own, MAXIMUM_CONNECTIONS at most: one
+    more is closed unanswered"""
+
     daemon_threads = True
 
+    def __init__(self, address, handler, connections: int = MAXIMUM_CONNECTIONS):
+        self.slots = threading.BoundedSemaphore(connections)
+        super().__init__(address, handler)
 
-def make_server(node: Node, address: str, port: int) -> Server:
+    def process_request(self, request, client_address):
+        if not self.slots.acquire(blocking=False):
+            self.shutdown_request(request)
+            return
+        try:
+            super().process_request(request, client_address)
+        except BaseException:
+            self.slots.release()
+            raise
+
+    def process_request_thread(self, request, client_address):
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self.slots.release()
+
+
+def make_server(node: Node, address: str, port: int, connections: int = MAXIMUM_CONNECTIONS) -> Server:
     handler = type("NodeHandler", (Handler,), {"node": node})
-    return Server((address, port), handler)
+    return Server((address, port), handler, connections)
 
 
 def main(argv=None) -> int:
