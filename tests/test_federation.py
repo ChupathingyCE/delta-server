@@ -177,6 +177,14 @@ class MalformedRoots(unittest.TestCase):
                        {"until": 2 ** 32}, {"use": "Primary"}, {"use": 7}):
             changed = dict(root, **change)
             self.refused(roots_document(roots=[changed]))
+        # (hex digits written as escapes: the game takes only plain digits)
+        plain = roots_document(roots=[root])
+        federation.parse_roots(plain, "example.org")
+        for member in ("key", "proof"):
+            value = root[member]
+            escaped = plain.replace(b'"%s"' % value.encode(), b'"\\u%04x%s"' % (ord(value[0]), value[1:].encode()))
+            self.assertEqual(json.loads(escaped), json.loads(plain))
+            self.refused(escaped)
         # (a proof made for another domain)
         other = json.loads(VECTORS[HOME]["roots_json"])["roots"]
         self.refused(roots_document(roots=other))
@@ -244,6 +252,8 @@ class MalformedList(unittest.TestCase):
                           for n in range(65)}),
                 b'{"open_networks": 1, "serial": 1, "networks": {"example.org": {"roots": [{"key": "%s"}]},'
                 b' "example.org": {"roots": [{"key": "%s"}]}}}' % (key.encode(), other.encode()),
+                b'{"open_networks": 1, "serial": 1, "networks": {"example.org": {"roots": [{"key": "\\u%04x%s"}]}}}'
+                % (ord(key[0]), key[1:].encode()),
                 b'{"open_networks": 2, "serial": 1, "networks": {}}',
                 b'{"open_networks": 1, "serial": 1, "networks": {}} x'):
             self.refused(bad)

@@ -44,8 +44,9 @@ later.
 
 The parsers are strict: a size limit first, then (for the list) the
 signature, then JSON with no repeated keys, no fractions, no NaN, nesting
-at most DEPTH_MOST, whole numbers inside their ranges. Unknown members are
-skipped. Anything else refuses the whole file.
+at most DEPTH_MOST, whole numbers inside their ranges, keys and proofs as
+plain hex digits (no backslash escapes, as the game reads them). Unknown
+members are skipped. Anything else refuses the whole file.
 
     federation.py root-keys --domain D --dir DIR [--until UNIX]
         a network's two root keys (DIR/<D>-root-primary.key and
@@ -75,6 +76,8 @@ SPDX-License-Identifier: MIT
 
 import argparse
 import json
+import json.decoder
+import json.scanner
 import os
 import re
 import secrets
@@ -200,12 +203,32 @@ def _depth(value, depth=1):
             _depth(item, depth + 1)
 
 
+class _Escaped(str):
+    """a JSON string written with a backslash escape: never a key or a proof,
+    whose hex digits are taken only as written (as the game reads them)"""
+
+
+def _scanstring(text, end, strict=True):
+    value, after = json.decoder.scanstring(text, end, strict)
+    if "\\" in text[end:after]:
+        value = _Escaped(value)
+    return value, after
+
+
+class _Decoder(json.JSONDecoder):
+    def __init__(self, **options):
+        super().__init__(**options)
+        self.parse_string = _scanstring
+        self.scan_once = json.scanner.py_make_scanner(self)
+
+
 def strict_json(data: bytes, most: int):
     if not isinstance(data, (bytes, bytearray)) or len(data) > most:
         raise FederationError("too big")
     try:
         text = bytes(data).decode("utf-8")
-        value = json.loads(text, object_pairs_hook=_no_repeats, parse_float=_refuse, parse_constant=_refuse)
+        value = json.loads(text, cls=_Decoder, object_pairs_hook=_no_repeats, parse_float=_refuse,
+                           parse_constant=_refuse)
     except (UnicodeDecodeError, ValueError, RecursionError) as problem:
         if isinstance(problem, FederationError):
             raise
@@ -223,7 +246,7 @@ def _whole(value, low: int, high: int, what: str) -> int:
 
 
 def _key(text, what="a root key") -> bytes:
-    if not isinstance(text, str) or not HEX64.fullmatch(text):
+    if type(text) is not str or not HEX64.fullmatch(text):
         raise FederationError(f"{what} is not 64 lowercase hex digits")
     key = bytes.fromhex(text)
     if identity.small_order(key):
@@ -286,7 +309,7 @@ def parse_roots(data: bytes, domain: str = None) -> dict:
         if "use" in entry and (not isinstance(use, str) or not USE.fullmatch(use)):
             raise FederationError("use is not a short word")
         proof = entry.get("proof")
-        if not isinstance(proof, str) or not HEX128.fullmatch(proof):
+        if type(proof) is not str or not HEX128.fullmatch(proof):
             raise FederationError("a proof is not 128 lowercase hex digits")
         if not ed25519.verify(key, roots_message(name, key, until), bytes.fromhex(proof)):
             raise FederationError("a root key's proof doesn't check")
