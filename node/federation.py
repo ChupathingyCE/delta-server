@@ -66,6 +66,9 @@ skipped. Anything else refuses the whole file.
         the name a pair of certificates proves, offline (the home network is
         chupathingy.org with its root keys unless --home and --home-root say)
 
+Chupathingy's site keeps a copy of this file, byte for byte; keep the two
+alike.
+
 SPDX-FileCopyrightText: 2026 Milenko x Horrible Dev
 SPDX-License-Identifier: MIT
 """
@@ -491,6 +494,8 @@ def check_name(networks: Networks, issuer_data: bytes, device_data: bytes, now: 
         why = identity.check_device(device, issuer, now, frozenset((revoked or {}).get(domain, ())))
     if not why and not device["handle"]:
         why = "no handle"
+    if not why and not HANDLE.fullmatch(device["handle"]):
+        why = "not a handle"
     if not why and not device["capabilities"] & identity.CAPABILITIES["play"]:
         why = "can't play"
     if why:

@@ -523,6 +523,27 @@ class Review(unittest.TestCase):
         self.assertIsNone(identity.AUDIENCE.match("example.org\n"))
         self.assertIsNone(accounts.HANDLE.match("milenko\n"))
 
+    def test_check_name_refuses_a_bad_handle_from_any_reader(self):
+        """(a certificate reader that let a line feed through, as an older
+        copy of identity.py did: the check refuses it rather than fail)"""
+        example = VECTORS["example.org"]
+        networks = federation.Networks(HOME, [HOME_ROOT], listed())
+        real = identity.parse_device
+
+        def loose(data):
+            fields = real(data)
+            if fields:
+                fields["handle"] += "\n"
+            return fields
+
+        federation.identity.parse_device = loose
+        try:
+            answer = federation.check_name(networks, bytes.fromhex(example["issuer_certificate"]),
+                                           bytes.fromhex(example["device_certificate"]), VECTORS["now"])
+        finally:
+            federation.identity.parse_device = real
+        self.assertEqual((answer["why"], answer["name"]), ("not a handle", ""))
+
     def test_use_and_revoked_strict(self):
         for change in ({"use": 0}, {"use": ""}, {"use": []}, {"use": None}):
             document = json.loads(VECTORS["example.org"]["roots_json"])
