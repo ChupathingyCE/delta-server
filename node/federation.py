@@ -61,9 +61,10 @@ skipped. Anything else refuses the whole file.
         a list of networks from networks' roots.json files (each one checked)
     federation.py list-sign --key FILE LIST                (writes LIST.sig)
     federation.py list-verify --public-key HEX [--last-epoch N] LIST
-    federation.py check --list LIST --list-key HEX [--add "DOMAIN KEY..."] [--home DOMAIN]
-                        --issuer HEX --device HEX [--now UNIX]
-        the name a pair of certificates proves, offline
+    federation.py check --list LIST --list-key HEX [--add "DOMAIN KEY..."]
+                        [--home DOMAIN --home-root HEX...] --issuer HEX --device HEX [--now UNIX]
+        the name a pair of certificates proves, offline (the home network is
+        chupathingy.org with its root keys unless --home and --home-root say)
 
 SPDX-FileCopyrightText: 2026 Milenko x Horrible Dev
 SPDX-License-Identifier: MIT
@@ -94,12 +95,23 @@ ROOT_KEYS_MOST = 4
 DEPTH_MOST = 8
 URL_MOST = 256
 LOCAL_MOST = 16
+# (issuer certificates remembered: which network each one is, and which
+# network each issuer key was certified by)
+ISSUERS_MOST = 256
 TIME_MOST = 0xFFFFFFFF
 SERIAL_MOST = 0xFFFFFFFE
 # the network today's certificates belong to (their root keys are the
 # identity key set every Chupathingy build has: link.md, "Keys")
 CHUPATHINGY = "chupathingy.org"
+# (its root keys, the identity key set: link.md, "Keys")
+CHUPATHINGY_ROOTS = (
+    "9c1c4454400fc0138630d63b8e2bbdeb0f31c99409763becd076b70f3189468e",
+    "a3124502702cd3b2f610155c28c622cbab72c6f0df483b339439a14964f1d29f",
+)
 
+# (every pattern here is used with fullmatch alone: "$" would let a
+# trailing line feed through)
+HANDLE = re.compile(r"[a-z0-9_-]{3,20}")
 HEX64 = re.compile(r"[0-9a-f]{64}")
 HEX128 = re.compile(r"[0-9a-f]{128}")
 LABEL = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?")
@@ -131,7 +143,7 @@ def valid_domain(domain) -> bool:
 
 def qualified(handle: str, domain: str) -> str:
     """handle:domain, lowercase"""
-    if not identity.HANDLE.match(handle or "") or not valid_domain(domain):
+    if not isinstance(handle, str) or not HANDLE.fullmatch(handle) or not valid_domain(domain):
         raise FederationError("not a handle or a domain")
     return f"{handle}:{domain}"
 
@@ -147,7 +159,7 @@ def parse_qualified(text, home: str):
     handle, colon, domain = text.partition(":")
     if not colon:
         domain = home
-    if not identity.HANDLE.match(handle) or ":" in domain or not valid_domain(domain):
+    if not HANDLE.fullmatch(handle) or ":" in domain or not valid_domain(domain):
         return None
     return handle, domain
 
@@ -268,7 +280,7 @@ def parse_roots(data: bytes, domain: str = None) -> dict:
         seen.add(key)
         until = _whole(entry.get("until", 0), 0, TIME_MOST, "until")
         use = entry.get("use", "")
-        if use and (not isinstance(use, str) or not USE.fullmatch(use)):
+        if "use" in entry and (not isinstance(use, str) or not USE.fullmatch(use)):
             raise FederationError("use is not a short word")
         proof = entry.get("proof")
         if not isinstance(proof, str) or not HEX128.fullmatch(proof):
@@ -277,7 +289,8 @@ def parse_roots(data: bytes, domain: str = None) -> dict:
             raise FederationError("a root key's proof doesn't check")
         roots.append({"key": key, "use": use, "until": until})
     revoked = document.get("revoked", "")
-    if revoked and (not isinstance(revoked, str) or len(revoked) > URL_MOST or not URL.fullmatch(revoked)):
+    if "revoked" in document and (not isinstance(revoked, str) or len(revoked) > URL_MOST or
+                                  not URL.fullmatch(revoked)):
         raise FederationError("revoked is not an https address")
     return {"domain": name, "roots": roots, "revoked": revoked}
 
@@ -405,6 +418,10 @@ class Networks:
             if local:
                 self.local.add(domain)
 
+        self._found = {}
+        self._issuers = {}
+        self.conflicts = set()
+
         for domain, roots in ((listed or {}).get("networks") or {}).items():
             take(domain, roots, False)
         for text in list(add)[:LOCAL_MOST]:
@@ -418,17 +435,40 @@ class Networks:
 
     def network_of(self, issuer_fields, now: int):
         """the domain whose root key signed an issuer certificate (a key in
-        date now), or None"""
+        date now), or None. Each certificate is looked for once (up to 64 +
+        16 networks of 4 keys: 320 signature checks), then remembered. An
+        issuer key certified by two networks' roots is refused for both"""
         if not issuer_fields:
             return None
-        message = identity.ISSUER_LABEL + issuer_fields["body"]
-        for domain, roots in self.networks.items():
-            for key, until in roots:
-                if until and now > until:
-                    continue
-                if ed25519.verify(key, message, issuer_fields["signature"]):
-                    return domain
-        return None
+        data = issuer_fields["body"] + issuer_fields["signature"]
+        found = self._found.get(data)
+        if found is None:
+            found = ("", 0)
+            message = identity.ISSUER_LABEL + issuer_fields["body"]
+            for domain, roots in self.networks.items():
+                for key, until in roots:
+                    # (one signature has one signer, so the key is found
+                    # whatever the time; its until is checked below)
+                    if ed25519.verify(key, message, issuer_fields["signature"]):
+                        found = (domain, until)
+                        break
+                if found[0]:
+                    break
+            if len(self._found) >= ISSUERS_MOST:
+                self._found.clear()
+            self._found[data] = found
+        domain, until = found
+        if not domain or (until and now > until):
+            return None
+        issuer = issuer_fields["public"]
+        if len(self._issuers) >= ISSUERS_MOST and issuer not in self._issuers:
+            self._issuers.clear()
+        if self._issuers.setdefault(issuer, domain) != domain:
+            if len(self.conflicts) < ISSUERS_MOST:
+                self.conflicts.add(issuer)
+        if issuer in self.conflicts:
+            return None
+        return domain
 
 
 def check_name(networks: Networks, issuer_data: bytes, device_data: bytes, now: int, revoked=None) -> dict:
@@ -595,7 +635,14 @@ def main(argv=None) -> int:
                 signature = handle.read()
             listed = check_list(document, signature, [(_key(key.lower(), "a list key"), 255)
                                                       for key in arguments.list_key])
-        networks = Networks(arguments.home, [_key(key.lower()) for key in arguments.home_root], listed,
+        home_roots = arguments.home_root
+        if not home_roots:
+            if arguments.home != CHUPATHINGY:
+                raise FederationError("--home-root: the home network's root keys")
+            home_roots = list(CHUPATHINGY_ROOTS)
+        if not valid_domain(arguments.home):
+            raise FederationError("--home is not a domain")
+        networks = Networks(arguments.home, [_key(key.lower()) for key in home_roots], listed,
                             arguments.add, arguments.remove, log=print)
         answer = check_name(networks, bytes.fromhex(arguments.issuer), bytes.fromhex(arguments.device),
                             arguments.now or int(time.time()))

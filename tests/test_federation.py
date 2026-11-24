@@ -355,8 +355,9 @@ class Tool(unittest.TestCase):
         self.assertEqual(identity.check_issuer(fields, [roots["roots"][0]["key"]], int(time.time())), "")
         code, out = run("list-keys", "--dir", root / "list")
         self.assertEqual(code, 0, out)
-        public = out.splitlines()[0].split()[3]
-        self.assertNotEqual(public, out.splitlines()[1].split()[3])
+        lines = [line for line in out.splitlines() if line.startswith("list ")]
+        public = lines[0].split()[3]
+        self.assertNotEqual(public, lines[1].split()[3])
         self.assertEqual(run("list-keys", "--dir", root / "list")[0], 2)  # never overwrites
         self.assertEqual(run("list-make", "--serial", 3, "--roots", root / "keys" / "roots.json",
                              "--out", root / "networks.json")[0], 0)
@@ -495,3 +496,150 @@ class TwoNetworks(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Review(unittest.TestCase):
+    """the security review's findings, each held by a test"""
+
+    def test_no_trailing_line_feed(self):
+        self.assertIsNone(federation.parse_qualified("milenko\n:example.org", HOME))
+        self.assertEqual(federation.parse_qualified(" milenko:example.org ", HOME), ("milenko", "example.org"))
+        with self.assertRaises(federation.FederationError):
+            federation.qualified("milenko\n", "example.org")
+        self.assertFalse(federation.valid_domain("example.org\n"))
+        # (a device certificate whose handle ends in a line feed)
+        body = identity.device_body(1, 0, 1790100000, 1790704800, bytes(8), bytes(8), bytes(16), bytes(32), 1,
+                                    "milenko")
+        raw = bytearray(body)
+        raw[6] = 8
+        raw += b"\n" + bytes(64)
+        self.assertIsNone(identity.parse_device(bytes(raw)))
+        with self.assertRaises(ValueError):
+            identity.device_body(1, 0, 1790100000, 1790704800, bytes(8), bytes(8), bytes(16), bytes(32), 1,
+                                 "milenko\n")
+        with self.assertRaises(ValueError):
+            identity.audience_bytes("example.org\n")
+        self.assertIsNone(identity.HANDLE.match("milenko\n"))
+        self.assertIsNone(identity.AUDIENCE.match("example.org\n"))
+        self.assertIsNone(accounts.HANDLE.match("milenko\n"))
+
+    def test_use_and_revoked_strict(self):
+        for change in ({"use": 0}, {"use": ""}, {"use": []}, {"use": None}):
+            document = json.loads(VECTORS["example.org"]["roots_json"])
+            document["roots"][0].update(change)
+            with self.assertRaises(federation.FederationError, msg=str(change)):
+                federation.parse_roots(json.dumps(document).encode(), "example.org")
+        for revoked in ([], "", 0, None, {}, False):
+            with self.assertRaises(federation.FederationError, msg=repr(revoked)):
+                federation.parse_roots(roots_document(revoked=revoked), "example.org")
+
+    def test_config_domain(self):
+        settings = config.load("", environ={})
+        for bad in ("localhost", "xn--exmple-cua.org", "Example.org", "1.2.3.4"):
+            settings["federation"]["network"] = bad
+            with self.assertRaises(config.ConfigError, msg=bad):
+                config.check(settings)
+        settings["federation"]["network"] = ""
+        config.check(settings)  # (no network, no roots: nothing published)
+        settings["federation"]["roots_file"] = "roots.json"
+        with self.assertRaises(config.ConfigError):  # (node.domain is localhost)
+            config.check(settings)
+        settings["node"]["domain"] = "example.org"
+        config.check(settings)
+
+    def test_issuer_lookups_remembered_and_two_networks_refused(self):
+        example = VECTORS["example.org"]
+        issuer = identity.parse_issuer(bytes.fromhex(example["issuer_certificate"]))
+        networks = federation.Networks(HOME, [HOME_ROOT], listed())
+        calls = []
+        real = ed25519.verify
+
+        def counted(*args):
+            calls.append(1)
+            return real(*args)
+
+        federation.ed25519.verify = counted
+        try:
+            self.assertEqual(networks.network_of(issuer, VECTORS["now"]), "example.org")
+            first = len(calls)
+            for _ in range(5):
+                self.assertEqual(networks.network_of(issuer, VECTORS["now"]), "example.org")
+            self.assertEqual(len(calls), first)
+        finally:
+            federation.ed25519.verify = real
+        # (the same issuer key, certified by the home network's root too: refused for both)
+        home_seed = seed(VECTORS[HOME]["root_primary_seed_text"])
+        again = identity.parse_issuer(federation.issuer_certificate(home_seed, issuer["public"], 1790000000,
+                                                                   1797776000))
+        self.assertIsNone(networks.network_of(again, VECTORS["now"]))
+        self.assertIsNone(networks.network_of(issuer, VECTORS["now"]))
+        self.assertIn(issuer["public"], networks.conflicts)
+
+    def test_cli_check_default_home(self):
+        import contextlib
+        import io
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        path = Path(folder.name) / "networks.json"
+        path.write_text(VECTORS["list"]["document"])
+        Path(str(path) + ".sig").write_text(VECTORS["list"]["signature"] + "\n")
+        example = VECTORS["example.org"]
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
+            code = federation.main(["check", "--list", str(path), "--list-key", VECTORS["list"]["key_public"],
+                                    "--issuer", example["issuer_certificate"], "--device",
+                                    example["device_certificate"], "--now", str(VECTORS["now"])])
+        self.assertEqual(code, 0, out.getvalue())
+        self.assertIn("milenko:example.org", out.getvalue())
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(federation.main(["check", "--home", "example.org", "--issuer", "00",
+                                              "--device", "00"]), 2)
+
+    def test_roots_settings_agree(self):
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        root = secrets.token_bytes(32)
+        issuer = secrets.token_bytes(32)
+        base = Path(folder.name)
+        (base / "roots.json").write_bytes(federation.make_roots("example.org", [(root, "primary", 0)]))
+        now = int(time.time())
+        (base / "issuer.cert").write_text(federation.issuer_certificate(root, ed25519.public_key(issuer), now - 60,
+                                                                        now + 86400).hex())
+        (base / "issuer.key").write_text(issuer.hex())
+        os.chmod(base / "issuer.key", 0o600)
+        settings = config.load("", environ={})
+        settings["node"].update(domain="example.org", data=str(base / "data"), database=":memory:")
+        settings["identity"].update(issuer_cert_file=str(base / "issuer.cert"),
+                                    issuer_key_file=str(base / "issuer.key"),
+                                    roots=[ed25519.public_key(root).hex()])
+        settings["federation"]["roots_file"] = str(base / "roots.json")
+        delta_node.Node(settings, log=lambda text: None).close()
+        settings["identity"]["roots"].append(ed25519.public_key(secrets.token_bytes(32)).hex())
+        with self.assertRaises(config.ConfigError):
+            delta_node.Node(settings, log=lambda text: None)
+
+
+class RawBytes(unittest.TestCase):
+    def test_list_served_byte_for_byte(self):
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        base = Path(folder.name)
+        raw = b'{"open_networks": 1, "x": "\xff\xfe"}\r\n'
+        (base / "networks.json").write_bytes(raw)
+        (base / "networks.json.sig").write_bytes(b"ab" * 64 + b"\n")
+        settings = config.load("", environ={})
+        settings["node"].update(data=str(base / "data"), database=":memory:")
+        settings["federation"]["networks_file"] = str(base / "networks.json")
+        node = delta_node.Node(settings, log=lambda text: None)
+        httpd = delta_node.make_server(node, "127.0.0.1", 0)
+        threading.Thread(target=httpd.serve_forever, daemon=True).start()
+        try:
+            connection = http.client.HTTPConnection("127.0.0.1", httpd.server_address[1], timeout=10)
+            connection.request("GET", "/v1/delta/networks")
+            self.assertEqual(connection.getresponse().read(), raw)
+            connection.close()
+            self.assertEqual(node.info()["network"], "")  # (node.domain localhost is no network)
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+            node.close()

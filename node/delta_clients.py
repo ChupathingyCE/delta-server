@@ -39,7 +39,7 @@ import urllib.parse
 import identity
 
 FIRST_PARTY = "chupathingy"
-CLIENT_ID = re.compile(r"^[a-z0-9][a-z0-9-]{2,39}$")
+CLIENT_ID = re.compile(r"^[a-z0-9][a-z0-9-]{2,39}\Z")
 STATUSES = ("pending", "approved", "suspended")
 
 # scopes are identity.CAPABILITIES' bits; a client may ask for these
@@ -80,9 +80,9 @@ HELD = ("chupa", "delta")
 # (characters that read as letters, and runs of one letter made one)
 LOOKALIKES = str.maketrans({"0": "o", "1": "l", "i": "l", "3": "e", "4": "a", "5": "s", "7": "t", "8": "b",
                             "9": "g", "6": "g", "$": "s", "@": "a", "|": "l", "!": "l"})
-HOST = re.compile(r"^[a-z0-9-]{1,63}(?:\.[a-z0-9-]{1,63})+$")
+HOST = re.compile(r"^[a-z0-9-]{1,63}(?:\.[a-z0-9-]{1,63})+\Z")
 UNSAFE = re.compile(r"[^!#-;=?-~]")
-EMAIL = re.compile(r"^[^@\s\"'<>\\]{1,64}@[a-z0-9-]+(?:\.[a-z0-9-]+)+$")
+EMAIL = re.compile(r"^[^@\s\"'<>\\]{1,64}@[a-z0-9-]+(?:\.[a-z0-9-]+)+\Z")
 
 
 def fold(name: str) -> str:

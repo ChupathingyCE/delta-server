@@ -35,7 +35,7 @@ MAXIMUM_BODY = 2048
 MAXIMUM_ANNOUNCE_BODY = 32768
 MAXIMUM_REPORT_PLAYERS = 128
 
-INVITE = re.compile(r"^(?:[0-9a-f]{64}|[0-9a-f]{44})$")
+INVITE = re.compile(r"^(?:[0-9a-f]{64}|[0-9a-f]{44})\Z")
 FIELDS = {
     "name": 32,
     "map": 64,

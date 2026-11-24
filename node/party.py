@@ -85,9 +85,9 @@ DEFAULT_RULE = "friends"
 # (no 0, O, 1, I or L: read aloud and typed on a pad)
 CODE_LETTERS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
 CODE_SIZE = 6
-CODE = re.compile(r"^[A-Z0-9]{6}$")
-MEMBER_ID = re.compile(r"^[0-9a-f]{8}$")
-PARTY_ID = re.compile(r"^[0-9a-f]{16}$")
+CODE = re.compile(r"^[A-Z0-9]{6}\Z")
+MEMBER_ID = re.compile(r"^[0-9a-f]{8}\Z")
+PARTY_ID = re.compile(r"^[0-9a-f]{16}\Z")
 
 
 class Refused(Exception):

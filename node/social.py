@@ -29,7 +29,7 @@ from game_list import console_state, invite_locked, publicly_listed
 
 SOCIAL_GAME_FIELDS = ("name", "map", "engine", "mode", "players", "maximum_players", "teams", "platform", "protocol",
                       "version", "build")
-JOIN_LINK = re.compile(r"^(?:halo://join/)?([0-9a-fA-F]{44}|[0-9a-fA-F]{64})/?$")
+JOIN_LINK = re.compile(r"^(?:halo://join/)?([0-9a-fA-F]{44}|[0-9a-fA-F]{64})/?\Z")
 GAME_CLAN_MEMBERS = 24  # a clan's members in the game's answer, at most (the rest counted)
 
 PROFILES = None  # accounts.Accounts
